@@ -156,11 +156,3 @@ func XOR(output, input []byte) {
 		output[i] ^= input[i]
 	}
 }
-
-// ValidMAC reports whether messageMAC is a valid HMAC tag for message.
-func ValidMAC(message, messageMAC, key []byte) bool {
-	mac := hmac.New(sha256.New, key)
-	mac.Write(message)
-	expectedMAC := mac.Sum(nil)
-	return hmac.Equal(messageMAC, expectedMAC)
-}
