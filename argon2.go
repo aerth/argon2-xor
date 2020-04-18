@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -23,7 +24,6 @@ func main() {
 	var (
 		saltSize    = 16
 		outflag     = flag.String("out", "-", "output file")
-		verboseFlag = flag.Bool("v", false, "verbose output to stderr")
 		timeFlag    = flag.Int("t", 100, "argon2 time parameter")
 		memFlag     = flag.Int("m", 10000, "argon2 mem parameter")
 		threadFlag  = flag.Int("p", 1, "argon2 thread/parallelism parameter")
@@ -32,16 +32,6 @@ func main() {
 	)
 	flag.IntVar(&saltSize, "saltlen", saltSize, "use custom salt size")
 	flag.Parse()
-	if !*verboseFlag {
-		log.SetOutput(ioutil.Discard)
-	}
-
-	if *decryptFlag {
-		log.Println("DECRYPTING")
-	} else {
-		log.Println("ENCRYPTING")
-	}
-
 	var (
 		buffer   []byte
 		password []byte
@@ -61,16 +51,13 @@ func main() {
 
 	if len(args) != 1 {
 		flag.PrintDefaults()
-		log.SetOutput(os.Stderr)
 		log.Fatalln("need input file as only argument")
 	}
 
 	// setup output file if not stdout
 	if *outflag != "-" && *outflag != "" && *outflag != "stdout" {
-		log.Println("Opening file for writing:", *outflag)
 		out, err = os.OpenFile(*outflag, os.O_CREATE|os.O_RDWR, 0600)
 		if err != nil {
-			log.SetOutput(os.Stderr)
 			log.Fatalln(err)
 		}
 	}
@@ -78,12 +65,10 @@ func main() {
 	// read input (plaintext, or if decrypting, mac+cyphertext)
 	buffer, err = ioutil.ReadFile(args[0])
 	if err != nil {
-		log.SetOutput(os.Stderr)
 		log.Fatalln(err)
 	}
 	log.Println("read file:", args[0])
 	if len(buffer) == 0 {
-		log.SetOutput(os.Stderr)
 		log.Fatalln("input file is empty")
 	}
 
@@ -95,14 +80,11 @@ func main() {
 		keylen -= saltSize
 	}
 
-	log.Println("key len:", keylen, "input len:", len(buffer), "difference:", len(buffer)-keylen, "salt len:", saltSize, "total", saltSize+macBlockSize)
-
 	// get password
 	if terminal.IsTerminal(syscall.Stdin) {
 		println("Password: (will NOT echo)")
 		password, err = terminal.ReadPassword(0)
 		if err != nil {
-			log.SetOutput(os.Stderr)
 			log.Fatalln(err)
 		}
 	} else {
@@ -113,11 +95,6 @@ func main() {
 	}
 
 	println("Loading... please wait.")
-	// print a quick hash of the password for comparison (TODO: remove)
-	if *verboseFlag {
-		log.Printf("Hash: %02x\n", argon2.IDKey(password, salt, time, mem, threads, 16)[:6])
-	}
-
 	// hash password
 	if *decryptFlag {
 		salt = buffer[:saltSize]
@@ -125,7 +102,6 @@ func main() {
 	} else {
 		salt = make([]byte, saltSize)
 		rand.Read(salt)
-		log.Printf("generating salt: %02x", salt)
 		out.Write(salt)
 	}
 	var hashedKey = argon2.IDKey(password, salt, time, mem, threads, uint32(keylen))
@@ -143,20 +119,15 @@ func main() {
 	if *decryptFlag {
 		var givenMac = buffer[:macBlockSize]
 		buffer = buffer[macBlockSize:]
-		log.Printf("salt=%02x\nmac=%02x\n", salt, givenMac)
-		log.Printf("buflen-keylen=%d", len(buffer)-len(hashedKey))
 		XOR(buffer, hashedKey)
 		mac.Write(buffer)
 		if !hmac.Equal(givenMac, mac.Sum(nil)) {
-			log.SetOutput(os.Stderr)
 			log.Fatalln("has been tampered with, MAC check failed")
 		}
 	} else {
 		mac.Write(buffer)
 		macResult := mac.Sum(nil)
-		log.Printf("MAC: %v 0x%02x", len(macResult), macResult)
 		io.Copy(out, bytes.NewReader(macResult))
-		log.Printf("salt=%02x\nmac=%02x\nbuflen=%d, keylen=%d", salt, macResult, len(buffer), len(hashedKey))
 		XOR(buffer, hashedKey)
 	}
 	// copy xor'd bytes to output
@@ -164,10 +135,10 @@ func main() {
 }
 func XOR(output, input []byte) {
 	// XOR cipher stream
-	if len(output) != len(input) {
-		log.Fatalln("key len != input len", len(output), len(input), len(output)-len(input))
+	if len(output) > len(input) {
+		panic(fmt.Sprintf("key len is less than input len", len(output), len(input), len(output)-len(input)))
 	}
-	for i := 0; i < len(input); i++ {
+	for i := 0; i < len(output); i++ {
 		output[i] ^= input[i]
 	}
 }
