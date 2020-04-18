@@ -28,7 +28,6 @@ func main() {
 		memFlag     = flag.Int("m", 10000, "argon2 mem parameter")
 		threadFlag  = flag.Int("p", 1, "argon2 thread/parallelism parameter")
 		decryptFlag = flag.Bool("d", false, "decrypt mode")
-		disableHMAC = flag.Bool("nomac", false, "disable HMAC support")
 	)
 	flag.IntVar(&saltSize, "saltlen", saltSize, "use custom salt size")
 	flag.Parse()
@@ -44,9 +43,8 @@ func main() {
 	)
 
 	var (
-		out     = os.Stdout
-		useHmac = !*disableHMAC
-		args    = flag.Args()
+		out  = os.Stdout
+		args = flag.Args()
 	)
 
 	if len(args) != 1 {
@@ -67,16 +65,13 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	log.Println("read file:", args[0])
 	if len(buffer) == 0 {
 		log.Fatalln("input file is empty")
 	}
 
 	keylen = len(buffer)
-	if *decryptFlag && useHmac {
-		keylen -= macBlockSize
-	}
 	if *decryptFlag {
+		keylen -= macBlockSize
 		keylen -= saltSize
 	}
 
@@ -105,17 +100,8 @@ func main() {
 		out.Write(salt)
 	}
 	var hashedKey = argon2.IDKey(password, salt, time, mem, threads, uint32(keylen))
+	var mac = hmac.New(sha256.New, hashedKey)
 
-	if !useHmac {
-
-		// just plain xor, no hmac
-		XOR(buffer, hashedKey)
-
-		// copy xor'd bytes to output
-		io.Copy(out, bytes.NewReader(buffer))
-		return
-	}
-	mac := hmac.New(sha256.New, hashedKey)
 	if *decryptFlag {
 		var givenMac = buffer[:macBlockSize]
 		buffer = buffer[macBlockSize:]
@@ -133,6 +119,7 @@ func main() {
 	// copy xor'd bytes to output
 	io.Copy(out, bytes.NewReader(buffer))
 }
+
 func XOR(output, input []byte) {
 	// XOR cipher stream
 	if len(output) > len(input) {
