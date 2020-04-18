@@ -24,7 +24,7 @@ func main() {
 
 	// get CLI flags
 	var (
-		saltSize    = 16
+		saltSize    = 1024
 		outflag     = flag.String("out", "-", "output file")
 		timeFlag    = flag.Int("t", 100, "argon2 time parameter")
 		memFlag     = flag.Int("m", 10000, "argon2 mem parameter")
