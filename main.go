@@ -21,6 +21,8 @@ const macBlockSize = 32
 
 func main() {
 	log.SetFlags(0)
+
+	// get CLI flags
 	var (
 		saltSize    = 16
 		outflag     = flag.String("out", "-", "output file")
@@ -32,6 +34,7 @@ func main() {
 	flag.IntVar(&saltSize, "saltlen", saltSize, "use custom salt size")
 	flag.Parse()
 
+	// setup
 	var (
 		buffer   []byte
 		password []byte
@@ -41,13 +44,11 @@ func main() {
 		threads  = uint8(*threadFlag)
 		keylen   int
 		err      error
+		out      = os.Stdout
+		args     = flag.Args()
 	)
 
-	var (
-		out  = os.Stdout
-		args = flag.Args()
-	)
-
+	// require input file
 	if len(args) != 1 {
 		flag.PrintDefaults()
 		log.Fatalln("need input file as only argument")
@@ -70,11 +71,15 @@ func main() {
 		log.Fatalln("input file is empty")
 	}
 
+	// set key length equal to input buffer size
 	keylen = len(buffer)
+
+	// subtract saltlen and MAC size if decrypting
 	if *decryptFlag {
-		keylen -= macBlockSize + saltSize
+		keylen -= saltSize + macBlockSize
 	}
 
+	// get passwd from stdin or terminal
 	password, err = getPasswd()
 	if err != nil {
 		log.Fatalln(err)
@@ -82,29 +87,37 @@ func main() {
 
 	println("Loading... please wait.")
 
+	// get salt
 	if *decryptFlag {
 		salt = buffer[:saltSize]
 	} else {
 		salt = make([]byte, saltSize)
 		rand.Read(salt)
-		out.Write(salt)
 	}
 
+	// get key from password
 	var hashedKey = argon2.IDKey(password, salt, time, mem, threads, uint32(keylen))
 	var mac = hmac.New(sha256.New, hashedKey)
 
 	if *decryptFlag {
+		// decrypt buffer
 		XOR(buffer[saltSize+mac.Size():], hashedKey)
+
+		// compare HMAC
 		mac.Write(buffer[saltSize+mac.Size():])
 		if !hmac.Equal(buffer[saltSize:saltSize+mac.Size()], mac.Sum(nil)) {
 			log.Fatalf("has been tampered with, MAC check failed: MAC=%02x", buffer[saltSize:saltSize+mac.Size()])
 		}
+
+		// write only the buffer to output
 		io.Copy(out, bytes.NewReader(buffer[saltSize+mac.Size():]))
 		return
 	}
+
+	// write salt, MAC, and encrypted buffer
+	out.Write(salt)
 	mac.Write(buffer)
-	macResult := mac.Sum(nil)
-	io.Copy(out, bytes.NewReader(macResult))
+	io.Copy(out, bytes.NewReader(mac.Sum(nil)))
 	XOR(buffer, hashedKey)
 	io.Copy(out, bytes.NewReader(buffer))
 
