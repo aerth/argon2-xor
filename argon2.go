@@ -35,7 +35,7 @@ func main() {
 	}
 
 	var (
-		input    []byte
+		buffer   []byte
 		password []byte
 		salt     []byte
 		time     = uint32(*timeFlag)
@@ -68,23 +68,23 @@ func main() {
 	}
 
 	// read input (plaintext, or if decrypting, mac+cyphertext)
-	input, err = ioutil.ReadFile(args[0])
+	buffer, err = ioutil.ReadFile(args[0])
 	if err != nil {
 		log.SetOutput(os.Stderr)
 		log.Fatalln(err)
 	}
 	log.Println("read file:", args[0])
-	if len(input) == 0 {
+	if len(buffer) == 0 {
 		log.SetOutput(os.Stderr)
 		log.Fatalln("input file is empty")
 	}
 
-	keylen = len(input)
+	keylen = len(buffer)
 	if *decryptFlag && useHmac {
 		keylen -= macBlockSize
 	}
 
-	log.Println("key len:", keylen, "input len:", len(input))
+	log.Println("key len:", keylen, "input len:", len(buffer))
 
 	// get password
 	if terminal.IsTerminal(syscall.Stdin) {
@@ -111,8 +111,8 @@ func main() {
 	// hash password
 	const saltSize = 32
 	if *decryptFlag {
-		salt = input[:saltSize]
-		input = input[saltSize:]
+		salt = buffer[:saltSize]
+		buffer = buffer[saltSize:]
 		keylen -= saltSize
 	} else {
 		salt = make([]byte, 32)
@@ -124,28 +124,28 @@ func main() {
 	if useHmac {
 		mac := hmac.New(sha256.New, hashedKey)
 		if *decryptFlag {
-			var givenMac = input[:macBlockSize]
-			input = input[macBlockSize:]
-			XOR(input, hashedKey)
-			mac.Write(input)
+			var givenMac = buffer[:macBlockSize]
+			buffer = buffer[macBlockSize:]
+			XOR(buffer, hashedKey)
+			mac.Write(buffer)
 			if !hmac.Equal(givenMac, mac.Sum(nil)) {
 				log.SetOutput(os.Stderr)
 				log.Fatalln("has been tampered with, MAC check failed")
 			}
 		} else {
-			mac.Write(input)
+			mac.Write(buffer)
 			macResult := mac.Sum(nil)
 			log.Printf("MAC: %v 0x%02x", len(macResult), macResult)
 			io.Copy(out, bytes.NewReader(macResult))
-			XOR(input, hashedKey)
+			XOR(buffer, hashedKey)
 		}
 	} else {
 		// just plain xor, no hmac
-		XOR(input, hashedKey)
+		XOR(buffer, hashedKey)
 	}
 
 	// copy xor'd bytes to output
-	io.Copy(out, bytes.NewReader(input))
+	io.Copy(out, bytes.NewReader(buffer))
 }
 func XOR(output, input []byte) {
 	// XOR cipher stream
