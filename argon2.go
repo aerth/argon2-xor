@@ -130,32 +130,35 @@ func main() {
 	}
 	var hashedKey = argon2.IDKey(password, salt, time, mem, threads, uint32(keylen))
 
-	if useHmac {
-		mac := hmac.New(sha256.New, hashedKey)
-		if *decryptFlag {
-			var givenMac = buffer[:macBlockSize]
-			buffer = buffer[macBlockSize:]
-			log.Printf("salt=%02x\nmac=%02x\n", salt, givenMac)
-			log.Printf("buflen-keylen=%d", len(buffer)-len(hashedKey))
-			XOR(buffer, hashedKey)
-			mac.Write(buffer)
-			if !hmac.Equal(givenMac, mac.Sum(nil)) {
-				log.SetOutput(os.Stderr)
-				log.Fatalln("has been tampered with, MAC check failed")
-			}
-		} else {
-			mac.Write(buffer)
-			macResult := mac.Sum(nil)
-			log.Printf("MAC: %v 0x%02x", len(macResult), macResult)
-			io.Copy(out, bytes.NewReader(macResult))
-			log.Printf("salt=%02x\nmac=%02x\nbuflen=%d, keylen=%d", salt, macResult, len(buffer), len(hashedKey))
-			XOR(buffer, hashedKey)
-		}
-	} else {
+	if !useHmac {
+
 		// just plain xor, no hmac
 		XOR(buffer, hashedKey)
-	}
 
+		// copy xor'd bytes to output
+		io.Copy(out, bytes.NewReader(buffer))
+		return
+	}
+	mac := hmac.New(sha256.New, hashedKey)
+	if *decryptFlag {
+		var givenMac = buffer[:macBlockSize]
+		buffer = buffer[macBlockSize:]
+		log.Printf("salt=%02x\nmac=%02x\n", salt, givenMac)
+		log.Printf("buflen-keylen=%d", len(buffer)-len(hashedKey))
+		XOR(buffer, hashedKey)
+		mac.Write(buffer)
+		if !hmac.Equal(givenMac, mac.Sum(nil)) {
+			log.SetOutput(os.Stderr)
+			log.Fatalln("has been tampered with, MAC check failed")
+		}
+	} else {
+		mac.Write(buffer)
+		macResult := mac.Sum(nil)
+		log.Printf("MAC: %v 0x%02x", len(macResult), macResult)
+		io.Copy(out, bytes.NewReader(macResult))
+		log.Printf("salt=%02x\nmac=%02x\nbuflen=%d, keylen=%d", salt, macResult, len(buffer), len(hashedKey))
+		XOR(buffer, hashedKey)
+	}
 	// copy xor'd bytes to output
 	io.Copy(out, bytes.NewReader(buffer))
 }
