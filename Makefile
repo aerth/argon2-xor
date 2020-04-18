@@ -1,3 +1,4 @@
+TARGETDIR ?= /usr/local/bin/
 argon2-xor: *.go
 	go build -o $@
 test: argon2-xor
@@ -6,3 +7,7 @@ test: argon2-xor
 	sha256sum *-xor*
 clean:
 	rm -rf argon2-xor argon2-xor.enc
+install:
+	install argon2-xor ${TARGETDIR}
+.PHONY += clean
+.PHONY += install
