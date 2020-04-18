@@ -31,6 +31,7 @@ func main() {
 	)
 	flag.IntVar(&saltSize, "saltlen", saltSize, "use custom salt size")
 	flag.Parse()
+
 	var (
 		buffer   []byte
 		password []byte
@@ -71,53 +72,42 @@ func main() {
 
 	keylen = len(buffer)
 	if *decryptFlag {
-		keylen -= macBlockSize
-		keylen -= saltSize
+		keylen -= macBlockSize + saltSize
 	}
 
-	// get password
-	if terminal.IsTerminal(syscall.Stdin) {
-		println("Password: (will NOT echo)")
-		password, err = terminal.ReadPassword(0)
-		if err != nil {
-			log.Fatalln(err)
-		}
-	} else {
-		log.Println("reading password from stdin")
-		buf := &bytes.Buffer{}
-		io.Copy(buf, os.Stdin)
-		password = buf.Bytes()
+	password, err = getPasswd()
+	if err != nil {
+		log.Fatalln(err)
 	}
 
 	println("Loading... please wait.")
-	// hash password
+
 	if *decryptFlag {
 		salt = buffer[:saltSize]
-		buffer = buffer[saltSize:]
 	} else {
 		salt = make([]byte, saltSize)
 		rand.Read(salt)
 		out.Write(salt)
 	}
+
 	var hashedKey = argon2.IDKey(password, salt, time, mem, threads, uint32(keylen))
 	var mac = hmac.New(sha256.New, hashedKey)
 
 	if *decryptFlag {
-		var givenMac = buffer[:macBlockSize]
-		buffer = buffer[macBlockSize:]
-		XOR(buffer, hashedKey)
-		mac.Write(buffer)
-		if !hmac.Equal(givenMac, mac.Sum(nil)) {
-			log.Fatalln("has been tampered with, MAC check failed")
+		XOR(buffer[saltSize+mac.Size():], hashedKey)
+		mac.Write(buffer[saltSize+mac.Size():])
+		if !hmac.Equal(buffer[saltSize:saltSize+mac.Size()], mac.Sum(nil)) {
+			log.Fatalf("has been tampered with, MAC check failed: MAC=%02x", buffer[saltSize:saltSize+mac.Size()])
 		}
-	} else {
-		mac.Write(buffer)
-		macResult := mac.Sum(nil)
-		io.Copy(out, bytes.NewReader(macResult))
-		XOR(buffer, hashedKey)
+		io.Copy(out, bytes.NewReader(buffer[saltSize+mac.Size():]))
+		return
 	}
-	// copy xor'd bytes to output
+	mac.Write(buffer)
+	macResult := mac.Sum(nil)
+	io.Copy(out, bytes.NewReader(macResult))
+	XOR(buffer, hashedKey)
 	io.Copy(out, bytes.NewReader(buffer))
+
 }
 
 func XOR(output, input []byte) {
@@ -128,4 +118,14 @@ func XOR(output, input []byte) {
 	for i := 0; i < len(output); i++ {
 		output[i] ^= input[i]
 	}
+}
+func getPasswd() ([]byte, error) {
+	if terminal.IsTerminal(syscall.Stdin) {
+		println("Password: (will NOT echo)")
+		return terminal.ReadPassword(0)
+	}
+	log.Println("reading password from stdin")
+	buf := &bytes.Buffer{}
+	io.Copy(buf, os.Stdin)
+	return buf.Bytes(), nil
 }
