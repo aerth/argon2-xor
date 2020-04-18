@@ -56,14 +56,14 @@ func main() {
 
 	// setup output file if not stdout
 	if *outflag != "-" && *outflag != "" && *outflag != "stdout" {
-		out, err = os.OpenFile(*outflag, os.O_CREATE|os.O_RDWR, 0600)
+		out, err = os.OpenFile(os.ExpandEnv(*outflag), os.O_CREATE|os.O_RDWR, 0600)
 		if err != nil {
 			log.Fatalln(err)
 		}
 	}
 
 	// read input (plaintext, or if decrypting, mac+cyphertext)
-	buffer, err = ioutil.ReadFile(args[0])
+	buffer, err = ioutil.ReadFile(os.ExpandEnv(args[0]))
 	if err != nil {
 		log.Fatalln(err)
 	}
