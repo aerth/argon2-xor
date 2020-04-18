@@ -21,6 +21,7 @@ const macBlockSize = 32
 func main() {
 	log.SetFlags(0)
 	var (
+		saltSize    = 16
 		outflag     = flag.String("out", "-", "output file")
 		verboseFlag = flag.Bool("v", false, "verbose output to stderr")
 		timeFlag    = flag.Int("t", 100, "argon2 time parameter")
@@ -29,9 +30,16 @@ func main() {
 		decryptFlag = flag.Bool("d", false, "decrypt mode")
 		disableHMAC = flag.Bool("nomac", false, "disable HMAC support")
 	)
+	flag.IntVar(&saltSize, "saltlen", saltSize, "use custom salt size")
 	flag.Parse()
 	if !*verboseFlag {
 		log.SetOutput(ioutil.Discard)
+	}
+
+	if *decryptFlag {
+		log.Println("DECRYPTING")
+	} else {
+		log.Println("ENCRYPTING")
 	}
 
 	var (
@@ -83,8 +91,11 @@ func main() {
 	if *decryptFlag && useHmac {
 		keylen -= macBlockSize
 	}
+	if *decryptFlag {
+		keylen -= saltSize
+	}
 
-	log.Println("key len:", keylen, "input len:", len(buffer))
+	log.Println("key len:", keylen, "input len:", len(buffer), "difference:", len(buffer)-keylen, "salt len:", saltSize, "total", saltSize+macBlockSize)
 
 	// get password
 	if terminal.IsTerminal(syscall.Stdin) {
@@ -102,21 +113,19 @@ func main() {
 	}
 
 	println("Loading... please wait.")
-
 	// print a quick hash of the password for comparison (TODO: remove)
 	if *verboseFlag {
-		log.Printf("Hash: %02x\n", argon2.IDKey(password, salt, time, mem, threads, 16))
+		log.Printf("Hash: %02x\n", argon2.IDKey(password, salt, time, mem, threads, 16)[:6])
 	}
 
 	// hash password
-	const saltSize = 32
 	if *decryptFlag {
 		salt = buffer[:saltSize]
 		buffer = buffer[saltSize:]
-		keylen -= saltSize
 	} else {
-		salt = make([]byte, 32)
+		salt = make([]byte, saltSize)
 		rand.Read(salt)
+		log.Printf("generating salt: %02x", salt)
 		out.Write(salt)
 	}
 	var hashedKey = argon2.IDKey(password, salt, time, mem, threads, uint32(keylen))
@@ -126,6 +135,8 @@ func main() {
 		if *decryptFlag {
 			var givenMac = buffer[:macBlockSize]
 			buffer = buffer[macBlockSize:]
+			log.Printf("salt=%02x\nmac=%02x\n", salt, givenMac)
+			log.Printf("buflen-keylen=%d", len(buffer)-len(hashedKey))
 			XOR(buffer, hashedKey)
 			mac.Write(buffer)
 			if !hmac.Equal(givenMac, mac.Sum(nil)) {
@@ -137,6 +148,7 @@ func main() {
 			macResult := mac.Sum(nil)
 			log.Printf("MAC: %v 0x%02x", len(macResult), macResult)
 			io.Copy(out, bytes.NewReader(macResult))
+			log.Printf("salt=%02x\nmac=%02x\nbuflen=%d, keylen=%d", salt, macResult, len(buffer), len(hashedKey))
 			XOR(buffer, hashedKey)
 		}
 	} else {
@@ -150,7 +162,7 @@ func main() {
 func XOR(output, input []byte) {
 	// XOR cipher stream
 	if len(output) != len(input) {
-		panic("key len != input len")
+		log.Fatalln("key len != input len", len(output), len(input), len(output)-len(input))
 	}
 	for i := 0; i < len(input); i++ {
 		output[i] ^= input[i]
