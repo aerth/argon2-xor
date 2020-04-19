@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/sha512"
 	"flag"
 	"fmt"
 	"io"
@@ -17,8 +18,6 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-const macBlockSize = 32
-
 func main() {
 	log.SetFlags(0)
 
@@ -30,9 +29,21 @@ func main() {
 		memFlag     = flag.Int("m", 10000, "argon2 mem parameter")
 		threadFlag  = flag.Int("p", 1, "argon2 thread/parallelism parameter")
 		decryptFlag = flag.Bool("d", false, "decrypt mode")
+		macHashFlag = flag.String("hmac", "sha512", "hash function for use with HMAC: sha256, sha384, or sha512")
+		hashFn      = sha512.New
 	)
 	flag.IntVar(&saltSize, "saltlen", saltSize, "use custom salt size")
 	flag.Parse()
+	switch *macHashFlag {
+	case "sha256":
+		hashFn = sha256.New
+	case "sha384":
+		hashFn = sha512.New384
+	case "sha512":
+		hashFn = sha512.New
+	default:
+		log.Fatalln("unsupported HMAC hash function:", *macHashFlag)
+	}
 
 	// setup
 	var (
@@ -76,7 +87,7 @@ func main() {
 
 	// subtract saltlen and MAC size if decrypting
 	if *decryptFlag {
-		keylen -= saltSize + macBlockSize
+		keylen -= saltSize + hmac.New(hashFn, []byte{}).Size()
 	}
 
 	// get passwd from stdin or terminal
@@ -97,7 +108,7 @@ func main() {
 
 	// get key from password
 	var hashedKey = argon2.IDKey(password, salt, time, mem, threads, uint32(keylen))
-	var mac = hmac.New(sha256.New, hashedKey)
+	var mac = hmac.New(hashFn, hashedKey)
 
 	if *decryptFlag {
 		// decrypt buffer
@@ -106,7 +117,7 @@ func main() {
 		// compare HMAC
 		mac.Write(buffer[saltSize+mac.Size():])
 		if !hmac.Equal(buffer[saltSize:saltSize+mac.Size()], mac.Sum(nil)) {
-			log.Fatalf("has been tampered with, MAC check failed: MAC=%02x", buffer[saltSize:saltSize+mac.Size()])
+			log.Fatalln("Encrypted file has been tampered with, MAC check failed")
 		}
 
 		// write only the buffer to output
