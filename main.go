@@ -73,6 +73,7 @@ func main() {
 
 	// require input file
 	if len(args) != 1 {
+		log.Printf("argon2-xor v%s\nsource code: %s", version, sourceURL)
 		flag.PrintDefaults()
 		log.Fatalln("need input file as only argument")
 	}

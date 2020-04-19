@@ -1,6 +1,7 @@
 TARGETDIR ?= /usr/local/bin/
+buildflags ?= -v -ldflags '-w -s'
 argon2-xor: *.go
-	go build -o $@
+	go build $(buildflags) -o $@
 test: argon2-xor
 	@echo encrypting
 	@echo 'password' | ./argon2-xor -out argon2-xor.enc ./argon2-xor
