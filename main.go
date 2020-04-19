@@ -32,9 +32,9 @@ func main() {
 	var (
 		saltSize    = 1024
 		outflag     = flag.String("out", "stdout", "output file")
-		timeFlag    = flag.Int("t", 100, "argon2 time parameter")
-		memFlag     = flag.Int("m", 10000, "argon2 mem parameter")
-		threadFlag  = flag.Int("p", 1, "argon2 thread/parallelism parameter")
+		timeFlag    = flag.Int("t", 1, "argon2 time parameter")
+		memFlag     = flag.Int("m", 1024*128, "argon2 mem parameter")
+		threadFlag  = flag.Int("p", 4, "argon2 thread/parallelism parameter")
 		decryptFlag = flag.Bool("d", false, "decrypt mode")
 		macHashFlag = flag.String("hmac", "sha512", "hash function for use with HMAC: sha256, sha384, or sha512")
 		showVersion = flag.Bool("version", false, "show version and exit")
