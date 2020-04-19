@@ -111,14 +111,14 @@ func main() {
 	var mac = hmac.New(hashFn, hashedKey)
 
 	if *decryptFlag {
-		// decrypt buffer
-		XOR(buffer[saltSize+mac.Size():], hashedKey)
 
 		// compare HMAC
 		mac.Write(buffer[saltSize+mac.Size():])
 		if !hmac.Equal(buffer[saltSize:saltSize+mac.Size()], mac.Sum(nil)) {
 			log.Fatalln("Encrypted file has been tampered with, MAC check failed")
 		}
+		// decrypt buffer
+		XOR(buffer[saltSize+mac.Size():], hashedKey)
 
 		// write only the buffer to output
 		io.Copy(out, bytes.NewReader(buffer[saltSize+mac.Size():]))
@@ -126,10 +126,10 @@ func main() {
 	}
 
 	// write salt, MAC, and encrypted buffer
+	XOR(buffer, hashedKey)
 	out.Write(salt)
 	mac.Write(buffer)
 	io.Copy(out, bytes.NewReader(mac.Sum(nil)))
-	XOR(buffer, hashedKey)
 	io.Copy(out, bytes.NewReader(buffer))
 
 }
