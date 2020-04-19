@@ -1,3 +1,7 @@
+// Copyright 2020 aerth <aerth@riseup.net>
+// Released under the GPLv3 license
+
+// argon2-xor command encrypts and decrypts files using a simple XOR stream with argon2 variable length output hash
 package main
 
 import (
@@ -18,6 +22,9 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+var version = "1.0.0"
+var sourceURL = "https://github.com/aerth/argon2-xor"
+
 func main() {
 	log.SetFlags(0)
 
@@ -30,10 +37,15 @@ func main() {
 		threadFlag  = flag.Int("p", 1, "argon2 thread/parallelism parameter")
 		decryptFlag = flag.Bool("d", false, "decrypt mode")
 		macHashFlag = flag.String("hmac", "sha512", "hash function for use with HMAC: sha256, sha384, or sha512")
+		showVersion = flag.Bool("version", false, "show version and exit")
 		hashFn      = sha512.New
 	)
 	flag.IntVar(&saltSize, "saltlen", saltSize, "use custom salt size")
 	flag.Parse()
+	if *showVersion {
+		log.Printf("argon2-xor v%s\nsource code: %s", version, sourceURL)
+		os.Exit(0)
+	}
 	switch *macHashFlag {
 	case "sha256":
 		hashFn = sha256.New
